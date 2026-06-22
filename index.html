@@ -516,15 +516,27 @@
     orders[aIdx]=oA; orders[bIdx]=oB;                                            // ровно метрики в точках
     // В карточках — заказы за месяц; для списания склада нужен дневной расход.
     const dailySales=orders.map((value,i)=>value/new Date(dates[i].getFullYear(),dates[i].getMonth()+1,0).getDate());
-    // ponytail: 1 поставка ближе к концу — обычный кейс; 2–3 только для длинной динамики
-    const supplyCount=Math.random()<0.7?1:Math.random()<0.92?2:3;
-    const supplyFractions=supplyCount===1?[rnd(.72,.88)]:supplyCount===2?[rnd(.42,.56),rnd(.76,.90)]:[rnd(.28,.40),rnd(.55,.68),rnd(.80,.92)];
-    const span=Math.max(1,bIdx-aIdx), restockDays=[];
-    supplyFractions.forEach(f=>{
-      const day=Math.min(n-2,Math.max(aIdx+1,Math.round(aIdx+span*f)));
-      if(!restockDays.includes(day)) restockDays.push(day);
-    });
-    const arrivals=Array(n).fill(0), safety=Math.round(dailySales.reduce((sum,value)=>sum+value,0)/n*ri(7,12));
+    // ponytail: остаток не выше 5 тыс.; дополнительные поставки появляются только когда без них не обойтись
+    const stockCap=ri(4200,5000), totalSales=dailySales.reduce((sum,value)=>sum+value,0);
+    const safety=Math.min(Math.round(stockCap*.15),Math.round(totalSales/n*ri(7,12)));
+    const spendLimit=stockCap-safety;
+    const supplyCount=Math.max(1,Math.min(3,Math.ceil(totalSales/spendLimit)-1));
+    const restockDays=[], nextRestock=(start,limit)=>{
+      let spent=0;
+      for(let day=start;day<n-1;day++){
+        if(spent+dailySales[day]>limit) return Math.max(start+1,day);
+        spent+=dailySales[day];
+      }
+      return n-1;
+    };
+    if(supplyCount===1) restockDays.push(nextRestock(0,Math.min(spendLimit,totalSales*rnd(.72,.88))));
+    else for(let start=0;restockDays.length<supplyCount;){
+      const day=nextRestock(start,spendLimit);
+      restockDays.push(day);
+      if(day===n-1) break;
+      start=day;
+    }
+    const arrivals=Array(n).fill(0);
     let nextSupply=0, inv=dailySales.slice(0,restockDays[0]).reduce((sum,value)=>sum+value,0)+safety;
     for(let i=0;i<n;i++){
       if(i===restockDays[nextSupply]){
@@ -537,7 +549,7 @@
       stock[i]=inv;                                                              // остаток на начало дня, включая приехавшую поставку
       inv-=dailySales[i];
     }
-    return {dates,orders,stock,n,aIdx,bIdx,arrivals};
+    return {dates,orders,stock,n,aIdx,bIdx,arrivals,stockCap};
   }
   const fmtDay=d=>String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');
   function drawGenChart(){
@@ -559,7 +571,7 @@
         interaction:{mode:'index',intersect:false},
         animation:false,
         plugins:{
-          legend:{position:'top',align:'start',labels:{usePointStyle:true,boxWidth:8,font:{...mont,weight:'600',size:12},color:'#3a3f47'}},
+          legend:{position:'top',align:'center',labels:{usePointStyle:true,boxWidth:8,font:{...mont,weight:'600',size:12},color:'#3a3f47'}},
           tooltip:{usePointStyle:true,padding:10,backgroundColor:'rgba(20,20,30,.9)',
             titleFont:{...mont,weight:'600'},bodyFont:mont,
             callbacks:{label:c=>'  '+c.dataset.label+': '+Math.round(c.parsed.y).toLocaleString('ru-RU')+' шт.'}},
@@ -591,7 +603,8 @@
     if(!zakA||!zakB) return setMode('gen');
     genSeries=buildSeries(zakA,zakB,d1.value,d2.value);
     console.assert(genSeries.orders[genSeries.aIdx]===zakA && genSeries.orders[genSeries.bIdx]===zakB &&
-      genSeries.arrivals.filter(Boolean).length<=3,'Заказы в А/Б должны совпадать с карточками, поставок — не больше трёх');
+      genSeries.arrivals.filter(Boolean).length<=3 && genSeries.stock.every(value=>value<=genSeries.stockCap),
+      'Заказы в А/Б должны совпадать с карточками, поставок — не больше трёх, остаток — не выше лимита');
     setMode('gen');
     drawGenChart();
     if(guides.length){
