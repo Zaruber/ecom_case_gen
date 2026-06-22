@@ -405,14 +405,14 @@
     el.innerHTML='<div class="guide-label">'+label+'</div><div class="guide-line"></div>';
     chart.appendChild(el); positionGuide(el); enableDrag(el); return el;
   }
-  const positionGuide=el=>el.style.left=(parseFloat(el.dataset.pct)*chart.clientWidth)+'px';
+  const positionGuide=el=>el.style.left=(parseFloat(el.dataset.pct)*100)+'%';
   function enableDrag(el){
     el.addEventListener('pointerdown',e=>{
       e.preventDefault();
       const move=ev=>{
         const r=chart.getBoundingClientRect();
-        const x=Math.max(0,Math.min(ev.clientX-r.left,r.width));
-        el.style.left=x+'px'; el.dataset.pct=x/r.width;
+        const pct=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width));
+        el.style.left=(pct*100)+'%'; el.dataset.pct=pct;
       };
       const up=()=>{
         document.removeEventListener('pointermove',move);
