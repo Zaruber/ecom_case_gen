@@ -106,9 +106,18 @@
 
   /* ---------- CHART ---------- */
   .col-chart{width:100%}
-  .chart{position:relative;width:100%;min-height:230px;border:1px dashed #cfd2d9;border-radius:12px;
+  .chart-wrap{display:flex;gap:10px;align-items:flex-start}
+  .chart{position:relative;flex:1;min-width:0;min-height:230px;border:1px dashed #cfd2d9;border-radius:12px;
     background:var(--soft);overflow:hidden;display:flex;align-items:center;justify-content:center;}
-  .chart.has-img{border-style:solid;border-color:var(--line);background:#fff}
+  .chart.has-content{border-style:solid;border-color:var(--line);background:#fff}
+  .chart:not(.has-content) .guide{display:none}
+  #genCanvas{width:100%;height:auto}
+  .chart-modes{display:flex;flex-direction:column;gap:8px;flex:0 0 auto}
+  .mode-btn{width:42px;height:42px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;
+    font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--ink)}
+  .mode-btn:hover{background:var(--soft)}
+  .mode-btn.active{border-color:var(--accent);background:#eef4ff;color:var(--accent)}
+  .mode-btn svg{display:block}
   .upload{text-align:center;padding:30px;color:var(--muted)}
   .upload p{margin:10px 0 0;font-size:12.5px}
   .chart img{display:none;width:100%;height:auto;user-select:none;-webkit-user-drag:none}
@@ -212,14 +221,37 @@
       </div>
 
       <section class="col-chart">
-        <div class="chart" id="chart">
-          <div class="upload" id="uploadHint">
-            <button class="btn" id="uploadBtn" type="button">＋ Загрузить график</button>
-            <p>Скриншот динамики (PNG/JPG)</p>
+        <div class="chart-wrap">
+          <div class="chart" id="chart">
+            <canvas id="genCanvas" width="1200" height="456" style="display:none"></canvas>
+            <div class="upload" id="uploadHint">
+              <button class="btn" id="uploadBtn" type="button">＋ Загрузить график</button>
+              <p>Скриншот динамики (PNG/JPG)</p>
+            </div>
+            <div class="upload" id="genHint" style="display:none">
+              <p>Сгенерируйте график кнопкой 😈 на верхней панели</p>
+            </div>
+            <img id="chartImg" alt="">
+            <button class="replace edit" id="replaceBtn" type="button" style="display:none">Заменить график</button>
+            <div class="drag-hint edit" id="dragHint" style="display:none">Перетащите линии «Точка А» и «Точка Б»</div>
           </div>
-          <img id="chartImg" alt="">
-          <button class="replace edit" id="replaceBtn" type="button" style="display:none">Заменить график</button>
-          <div class="drag-hint edit" id="dragHint" style="display:none">Перетащите линии «Точка А» и «Точка Б»</div>
+          <div class="chart-modes edit">
+            <button class="mode-btn" id="modeGen" type="button" title="Показать сгенерированный график">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M13 3.5C13.5 9.2 16.8 12.5 22.5 13C16.8 13.5 13.5 16.8 13 22.5C12.5 16.8 9.2 13.5 3.5 13C9.2 12.5 12.5 9.2 13 3.5Z"/>
+                <path d="M5.5 2.5C5.7 4.6 6.4 5.3 8.5 5.5C6.4 5.7 5.7 6.4 5.5 8.5C5.3 6.4 4.6 5.7 2.5 5.5C4.6 5.3 5.3 4.6 5.5 2.5Z"/>
+                <circle cx="20" cy="20" r="1.8"/>
+              </svg>
+            </button>
+            <button class="mode-btn active" id="modePhoto" type="button" title="Загрузить своё фото">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M12 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l4 4v4"/>
+                <path d="M14 3v4h4"/>
+                <path d="M18 21v-8"/>
+                <path d="M15 16l3-3 3 3"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <input type="file" id="file" accept="image/*" hidden>
       </section>
@@ -376,23 +408,40 @@
   d2.addEventListener('input',updateDates);
 
   /* ---------- Chart upload + guides ---------- */
-  const chart=g('chart'), chartImg=g('chartImg'), fileInput=g('file');
-  const uploadHint=g('uploadHint'), replaceBtn=g('replaceBtn'), dragHint=g('dragHint');
+  const chart=g('chart'), chartImg=g('chartImg'), fileInput=g('file'), genCanvas=g('genCanvas');
+  const uploadHint=g('uploadHint'), genHint=g('genHint'), replaceBtn=g('replaceBtn'), dragHint=g('dragHint');
+
+  let chartMode='photo';   // 'photo' | 'gen'
+  let genSeries=null;      // сгенерированные данные графика
+  const hasImg=()=>!!chartImg.getAttribute('src');
+
+  function setMode(mode){
+    chartMode=mode;
+    const showGen = mode==='gen'   && !!genSeries;
+    const showImg = mode==='photo' && hasImg();
+    const content = showGen || showImg;
+    genCanvas.style.display  = showGen?'block':'none';
+    chartImg.style.display   = showImg?'block':'none';
+    uploadHint.style.display = (mode==='photo' && !showImg)?'':'none';
+    genHint.style.display    = (mode==='gen'   && !showGen)?'':'none';
+    replaceBtn.style.display = showImg?'':'none';
+    dragHint.style.display   = content?'':'none';
+    chart.classList.toggle('has-content', content);
+    if(content) ensureGuides();
+    g('modeGen').classList.toggle('active', mode==='gen');
+    g('modePhoto').classList.toggle('active', mode==='photo');
+  }
+
   g('uploadBtn').addEventListener('click',()=>fileInput.click());
   replaceBtn.addEventListener('click',()=>fileInput.click());
   const readImg=f=>{const r=new FileReader();r.onload=ev=>chartImg.src=ev.target.result;r.readAsDataURL(f);};
   fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)readImg(f);});
-  chartImg.addEventListener('load',()=>{
-    if(!chartImg.src)return;
-    chartImg.style.display='block';
-    chart.classList.add('has-img');
-    uploadHint.style.display='none';
-    replaceBtn.style.display='';
-    dragHint.style.display='';
-    ensureGuides();
-  });
+  chartImg.addEventListener('load',()=>{ if(hasImg()) setMode('photo'); });
   ['dragover','dragenter'].forEach(ev=>chart.addEventListener(ev,e=>e.preventDefault()));
   chart.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))readImg(f);});
+
+  g('modeGen').addEventListener('click',()=>setMode('gen'));
+  g('modePhoto').addEventListener('click',()=>setMode('photo'));
 
   let guides=[];
   function ensureGuides(){
@@ -423,6 +472,70 @@
     });
   }
   window.addEventListener('resize',()=>guides.forEach(positionGuide));
+
+  /* ---------- Generated chart (Заказы / Остатки) ---------- */
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const ease=t=>t*t*(3-2*t);
+  function buildSeries(zakA,zakB,from,to){
+    const DAY=86400000;
+    let s,e;
+    if(from&&to){ s=new Date(from); e=new Date(to); }
+    else { e=new Date(); s=new Date(+e-30*DAY); }
+    s=new Date(+s-15*DAY); e=new Date(+e+15*DAY);          // 15 дней до и после периода ведения
+    const dates=[]; for(let d=new Date(s); d<=e; d=new Date(+d+DAY)) dates.push(new Date(d));
+    const n=dates.length;
+    const oA=Math.max(1,Math.round(zakA/30)), oB=Math.max(oA+1,Math.round(zakB/30)); // заказы/день А и Б
+    const sStart=Math.round(oB*rnd(9,14)), sEnd=Math.max(1,Math.round(oB*rnd(1.2,2.5)));
+    const orders=[], stock=[];
+    for(let i=0;i<n;i++){
+      const t=n>1?i/(n-1):0;
+      let o=lerp(oA*0.5,oB,ease(t))*(1+rnd(-0.22,0.22));   // рост заказов от А к Б + шум
+      if(Math.random()<0.12) o*=rnd(1.4,2.1);              // редкие всплески
+      o=Math.max(0,Math.round(o)); orders.push(o);
+      let st=lerp(sStart,sEnd,ease(t)) - (o-oA)*rnd(0.4,0.9); // остатки убывают, обратны заказам
+      st*=(1+rnd(-0.07,0.07));
+      stock.push(Math.max(0,Math.round(st)));
+    }
+    return {dates,orders,stock,n,aIdx:15,bIdx:n-16};
+  }
+  function drawGenChart(){
+    if(!genSeries) return;
+    const ctx=genCanvas.getContext('2d');
+    const W=genCanvas.width, H=genCanvas.height;
+    ctx.clearRect(0,0,W,H);
+    const {dates,orders,stock,n}=genSeries;
+    const m={l:20,r:20,t:48,b:40}, pw=W-m.l-m.r, ph=H-m.t-m.b;
+    const oMax=Math.max(1,...orders)*1.18, sMax=Math.max(1,...stock)*1.12;
+    const X=i=>m.l+(n>1?i/(n-1):0)*pw;
+    const YO=v=>m.t+ph-(v/oMax)*ph, YS=v=>m.t+ph-(v/sMax)*ph;
+    // сетка
+    ctx.strokeStyle='#eef0f3'; ctx.lineWidth=1;
+    for(let k=0;k<=4;k++){const y=m.t+ph*k/4; ctx.beginPath(); ctx.moveTo(m.l,y); ctx.lineTo(m.l+pw,y); ctx.stroke();}
+    const series=(vals,Y,line,fill)=>{
+      ctx.beginPath(); ctx.moveTo(X(0),Y(vals[0]));
+      for(let i=1;i<n;i++) ctx.lineTo(X(i),Y(vals[i]));
+      ctx.lineTo(X(n-1),m.t+ph); ctx.lineTo(X(0),m.t+ph); ctx.closePath();
+      ctx.fillStyle=fill; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(X(0),Y(vals[0]));
+      for(let i=1;i<n;i++) ctx.lineTo(X(i),Y(vals[i]));
+      ctx.strokeStyle=line; ctx.lineWidth=2.4; ctx.lineJoin='round'; ctx.stroke();
+    };
+    series(stock,YS,'#3d8fd6','rgba(90,169,230,0.18)');    // остатки — синяя
+    series(orders,YO,'#e23b54','rgba(226,86,107,0.16)');   // заказы — красная
+    // подписи дат
+    ctx.fillStyle='#9aa0aa'; ctx.font='11px Montserrat, sans-serif'; ctx.textAlign='center';
+    const step=Math.max(1,Math.round(n/12));
+    for(let i=0;i<n;i+=step){
+      const d=dates[i], lbl=String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');
+      ctx.fillText(lbl,X(i),H-m.b+18);
+    }
+    // легенда
+    ctx.textAlign='left'; ctx.font='600 12px Montserrat, sans-serif';
+    ctx.fillStyle='#e23b54'; ctx.beginPath(); ctx.arc(m.l+5,20,5,0,7); ctx.fill();
+    ctx.fillStyle='#3a3f47'; ctx.fillText('Заказы',m.l+16,24);
+    ctx.fillStyle='#3d8fd6'; ctx.beginPath(); ctx.arc(m.l+95,20,5,0,7); ctx.fill();
+    ctx.fillStyle='#3a3f47'; ctx.fillText('Остатки',m.l+106,24);
+  }
 
   /* ---------- Marketplace select ---------- */
   const mp=g('mp'), mpCustom=g('mpCustom'), mpView=g('mpView');
@@ -487,6 +600,7 @@
     mp.value='Wildberries'; updateMp();
     const ex=window.EXAMPLE_CHART||'image/graph_temple.png';
     if(chartImg.src!==ex) chartImg.src=ex;
+    setMode('photo');
   });
   g('clearBtn').addEventListener('click',()=>{
     if(!confirm('Очистить все поля?'))return;
@@ -550,6 +664,15 @@
     const S=o=>({per:''+o.per,kor:''+o.kor,zak:''+o.zak,prod:''+o.prod,rev:''+o.rev});
     fillPoint('A',Object.assign({month:from?from.slice(0,7):''},S(m.A)));
     fillPoint('B',Object.assign({month:to?to.slice(0,7):''},S(m.B)));
+    // график по дням: Заказы (красная) + Остатки (синяя)
+    genSeries=buildSeries(m.A.zak,m.B.zak,from,to);
+    drawGenChart();
+    setMode('gen');
+    if(guides.length){
+      guides[0].dataset.pct=genSeries.aIdx/(genSeries.n-1);
+      guides[1].dataset.pct=genSeries.bIdx/(genSeries.n-1);
+      guides.forEach(positionGuide);
+    }
     closeModal();
   });
 
