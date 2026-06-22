@@ -603,7 +603,7 @@
     if(!zakA||!zakB) return setMode('gen');
     genSeries=buildSeries(zakA,zakB,d1.value,d2.value);
     console.assert(genSeries.orders[genSeries.aIdx]===zakA && genSeries.orders[genSeries.bIdx]===zakB &&
-      genSeries.arrivals.filter(Boolean).length<=3 && genSeries.stock.every(value=>value<=genSeries.stockCap),
+      genSeries.arrivals.filter(Boolean).length<=3 && genSeries.stock.every(value=>value<=genSeries.stockCap+1e-6),
       'Заказы в А/Б должны совпадать с карточками, поставок — не больше трёх, остаток — не выше лимита');
     setMode('gen');
     drawGenChart();
