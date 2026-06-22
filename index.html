@@ -493,7 +493,7 @@
     const dates=[]; for(let d=new Date(s); d<=e; d=new Date(+d+DAY)) dates.push(new Date(d));
     const n=dates.length;
     const aIdx=15, bIdx=n-16;                             // даты «с» и «по» (точки А и Б)
-    const oA=Math.max(1,Math.round(zakA)), oB=Math.max(oA+1,Math.round(zakB)); // заказы в день в точках А и Б
+    const oA=Math.max(1,Math.round(zakA)), oB=Math.max(oA+1,Math.round(zakB)); // заказы в точках А и Б
     const tailGrows=Math.random()<0.5;                   // 50/50: после Б тренд растёт или проседает
 
     // максимум 2 просадки между А и Б, всё остальное — гладко
@@ -514,6 +514,8 @@
       orders[i]=Math.max(0,Math.round(o));
     }
     orders[aIdx]=oA; orders[bIdx]=oB;                                            // ровно метрики в точках
+    // В карточках — заказы за месяц; для списания склада нужен дневной расход.
+    const dailySales=orders.map((value,i)=>value/new Date(dates[i].getFullYear(),dates[i].getMonth()+1,0).getDate());
     // ponytail: 1 поставка ближе к концу — обычный кейс; 2–3 только для длинной динамики
     const supplyCount=Math.random()<0.7?1:Math.random()<0.92?2:3;
     const supplyFractions=supplyCount===1?[rnd(.72,.88)]:supplyCount===2?[rnd(.42,.56),rnd(.76,.90)]:[rnd(.28,.40),rnd(.55,.68),rnd(.80,.92)];
@@ -522,18 +524,18 @@
       const day=Math.min(n-2,Math.max(aIdx+1,Math.round(aIdx+span*f)));
       if(!restockDays.includes(day)) restockDays.push(day);
     });
-    const arrivals=Array(n).fill(0), safety=Math.round(orders.reduce((sum,value)=>sum+value,0)/n*ri(7,12));
-    let nextSupply=0, inv=orders.slice(0,restockDays[0]).reduce((sum,value)=>sum+value,0)+safety;
+    const arrivals=Array(n).fill(0), safety=Math.round(dailySales.reduce((sum,value)=>sum+value,0)/n*ri(7,12));
+    let nextSupply=0, inv=dailySales.slice(0,restockDays[0]).reduce((sum,value)=>sum+value,0)+safety;
     for(let i=0;i<n;i++){
       if(i===restockDays[nextSupply]){
         const until=restockDays[nextSupply+1]||n;
-        const target=orders.slice(i,until).reduce((sum,value)=>sum+value,0)+safety;
+        const target=dailySales.slice(i,until).reduce((sum,value)=>sum+value,0)+safety;
         arrivals[i]=Math.max(1,Math.round(target-inv));
         inv+=arrivals[i];
         nextSupply++;
       }
       stock[i]=inv;                                                              // остаток на начало дня, включая приехавшую поставку
-      inv-=orders[i];
+      inv-=dailySales[i];
     }
     return {dates,orders,stock,n,aIdx,bIdx,arrivals};
   }
