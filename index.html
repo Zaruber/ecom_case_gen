@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Генератор кейсов E-commerce</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="image/graph_temple.b64.js"></script>
+<style>
+  :root{
+    --ink:#1b1b1f;
+    --muted:#6b7280;
+    --line:#e5e7eb;
+    --soft:#f4f5f7;
+    --accent:#2563eb;
+    --sheet-w:1180px;
+    --scale:0.8;   /* масштаб предпросмотра: меньше — компактнее (на экспорт не влияет) */
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:'Montserrat',system-ui,sans-serif;
+    background:#eceef1;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar{
+    position:sticky;top:0;z-index:50;
+    display:flex;align-items:center;gap:12px;
+    padding:14px 22px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;
+  }
+  .toolbar .brand{font-weight:800;font-size:16px;margin-right:auto;letter-spacing:.2px}
+  .toolbar .brand span{color:var(--accent)}
+  .btn{
+    font-family:inherit;font-size:13px;font-weight:600;
+    padding:9px 16px;border-radius:9px;border:1px solid var(--line);
+    background:#fff;color:var(--ink);cursor:pointer;transition:.15s;
+  }
+  .btn:hover{background:var(--soft)}
+  .btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .btn.primary:hover{opacity:.88}
+  .btn.accent{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.accent:hover{opacity:.9}
+
+  /* ---------- Stage / Sheet ---------- */
+  .stage{padding:16px;overflow-x:auto}
+  .sheet{
+    width:var(--sheet-w);margin:0 auto;background:#fff;border-radius:16px;
+    box-shadow:0 12px 40px rgba(20,20,30,.10);padding:40px 44px;
+    display:flex;align-items:flex-start;gap:30px;
+    zoom:var(--scale);
+  }
+  .col-right{flex:2 1 0;min-width:0;display:flex;flex-direction:column;gap:26px}
+  .points-row{display:flex;gap:30px;align-items:flex-start}
+
+  /* ---------- Editable fields ---------- */
+  .ce{outline:none;cursor:text;border-bottom:1px dashed #c7cad1;padding:0 2px;border-radius:3px 3px 0 0;min-width:10px}
+  .ce:focus{background:#eef4ff;border-bottom-color:var(--accent)}
+  .ce:empty:before{content:attr(data-ph);color:#b8bcc4;font-weight:400}
+  .ce.multiline{display:block;white-space:pre-wrap;word-break:break-word;border:1px dashed #c9ccd3;border-radius:8px;padding:8px 10px;min-height:60px}
+  .ce.multiline:focus{background:#eef4ff}
+
+  /* native pickers / select */
+  .f{border:none;background:transparent;font-family:inherit;color:inherit;font-size:inherit;font-weight:inherit;border-bottom:1px dashed #c7cad1;padding:1px 2px}
+  .f:focus{outline:none;background:#eef4ff;border-bottom-color:var(--accent);border-radius:3px}
+  select.f{cursor:pointer}
+
+  .view{display:none}
+
+  /* ---------- LEFT column ---------- */
+  .col-left{flex:1.05 1 0;min-width:0}
+  .title{font-size:40px;font-weight:800;line-height:1.08;margin:0 0 6px;letter-spacing:-.5px;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}
+  .title .f,.title .view,.title .ce{font-size:40px;font-weight:800}
+  .title .title-name{min-width:120px}
+  .subhead{display:flex;flex-direction:column;gap:6px;margin-bottom:22px}
+  .cat{font-size:16px;color:var(--muted);font-weight:500;align-self:flex-start}
+  .dates{font-size:15px;color:var(--muted);font-weight:600;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  .dates .f{font-size:14px}
+  .block{margin-bottom:18px}
+  .block h2{font-size:18px;font-weight:700;margin:0 0 8px}
+  .block .multiline{font-size:14.5px;line-height:1.55;font-weight:500}
+
+  /* ---------- POINT cards ---------- */
+  .point{flex:1 1 0;min-width:0}
+  .point h3{font-size:18px;font-weight:700;margin:0 0 12px;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+  .point h3 .ttl-accent{color:var(--accent);font-weight:800}
+  .point h3 .month-label{font-size:14px;font-weight:600;color:var(--muted)}
+  .point h3 .f{font-size:13px}
+  .metric{display:flex;align-items:center;gap:7px;font-size:14.5px;font-weight:500;margin:7px 0}
+  .metric .ic{width:18px;text-align:center}
+  .metric .lbl{color:var(--ink)}
+  .metric .num{display:inline-block;width:90px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  .metric .unit{color:var(--muted);font-weight:600}
+  .conv-title{font-size:14.5px;font-weight:700;margin:16px 0 8px;display:flex;align-items:center;gap:6px}
+  .conv-row{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:500;margin:5px 0}
+  .conv-row .dot{color:var(--muted)}
+  .conv-row .clbl{color:var(--ink)}
+  .conv-row .cval{display:inline-block;width:70px;text-align:right;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+  .conv-row .cval.manual{color:#b45309}
+
+  /* ---------- CHART ---------- */
+  .col-chart{width:100%}
+  .chart{position:relative;width:100%;min-height:230px;border:1px dashed #cfd2d9;border-radius:12px;
+    background:var(--soft);overflow:hidden;display:flex;align-items:center;justify-content:center;}
+  .chart.has-img{border-style:solid;border-color:var(--line);background:#fff}
+  .upload{text-align:center;padding:30px;color:var(--muted)}
+  .upload p{margin:10px 0 0;font-size:12.5px}
+  .chart img{display:none;width:100%;height:auto;user-select:none;-webkit-user-drag:none}
+  .replace{position:absolute;top:8px;right:8px;font-size:11px;padding:5px 10px;border-radius:7px;
+    background:rgba(255,255,255,.9);border:1px solid var(--line);cursor:pointer;font-weight:600;z-index:6}
+  .drag-hint{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:11px;color:#fff;
+    background:rgba(0,0,0,.55);padding:4px 10px;border-radius:20px;z-index:6;pointer-events:none}
+  .guide{position:absolute;top:0;bottom:0;transform:translateX(-50%);z-index:5;cursor:ew-resize;touch-action:none}
+  .guide .guide-line{position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:#111}
+  .guide .guide-label{position:absolute;top:8px;left:50%;transform:translateX(-50%);
+    background:#111;color:#fff;font-size:12px;font-weight:600;padding:2px 9px;border-radius:5px;white-space:nowrap}
+
+  /* ---------- Export mode ---------- */
+  .exporting .sheet{zoom:1}
+  .exporting .f,.exporting .ce{border-color:transparent !important;background:transparent !important}
+  .exporting .ce:empty:before{content:'' !important}
+  .exporting .view{display:inline}
+  .exporting .edit{display:none !important}
+  .exporting .replace,.exporting .drag-hint,.exporting .upload{display:none !important}
+  .exporting .chart{border:none}
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{position:fixed;inset:0;background:rgba(20,20,30,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+  .modal-overlay[hidden]{display:none}
+  .modal{background:#fff;border-radius:16px;width:100%;max-width:460px;box-shadow:0 24px 70px rgba(0,0,0,.30);overflow:hidden}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line)}
+  .modal-head h2{margin:0;font-size:18px;font-weight:700}
+  .modal-close{border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--muted);line-height:1}
+  .modal-body{padding:18px 22px;display:flex;flex-direction:column;gap:15px}
+  .fld{display:flex;flex-direction:column;gap:6px}
+  .fld>span{font-size:13px;font-weight:600}
+  .fld input,.fld select{font-family:inherit;font-size:14px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}
+  .fld input:focus,.fld select:focus{outline:none;border-color:var(--accent)}
+  .fld .row{display:flex;gap:10px}
+  .fld .row .ent-type{flex:0 0 92px}
+  .fld .row .grow1{flex:1;min-width:0}
+  .fld .sub{flex:1;display:flex;flex-direction:column;gap:4px}
+  .fld .sub small{font-size:11px;color:var(--muted);font-weight:600}
+  .hint{margin:2px 0 0;font-size:11.5px;color:var(--muted)}
+  .modal-note{margin:0 22px;padding:10px 12px;font-size:12.5px;color:var(--muted);background:var(--soft);border-radius:9px}
+  .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px 20px}
+
+  @media (max-width:1240px){ .stage{padding:16px} }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="brand">Генератор кейсов <span>E-commerce</span></div>
+  <button class="btn" id="genBtn" type="button" title="Генератор случайных метрик">😈</button>
+  <button class="btn" id="exampleBtn" type="button">Заполнить примером</button>
+  <button class="btn" id="clearBtn" type="button">Очистить</button>
+  <button class="btn primary" id="pngBtn" type="button">⬇ Экспорт PNG</button>
+  <button class="btn accent" id="pdfBtn" type="button">⬇ Экспорт PDF</button>
+</div>
+
+<div class="stage">
+  <div class="sheet" id="sheet">
+
+    <!-- LEFT -->
+    <div class="col-left">
+      <h1 class="title">
+        <select class="f edit" id="entType">
+          <option value="ИП">ИП</option>
+          <option value="ООО">ООО</option>
+        </select>
+        <span class="view" id="entTypeView"></span>
+        <span class="ce title-name" id="entName" contenteditable="true" data-ph="Наименование"></span>
+      </h1>
+      <div class="subhead">
+        <span class="ce cat" id="category" contenteditable="true" data-ph="Категория товара"></span>
+        <span class="dates">Даты работы:
+          <input type="date" class="f edit" id="d1">
+          <span class="edit">—</span>
+          <input type="date" class="f edit" id="d2">
+          <span class="view" id="datesView"></span>
+        </span>
+      </div>
+
+      <section class="block">
+        <h2>Проблемы:</h2>
+        <div class="ce multiline" id="problems" contenteditable="true" data-ph="1. Первая проблема…"></div>
+      </section>
+
+      <section class="block">
+        <h2>Достижения:</h2>
+        <div class="ce multiline" id="achievements" contenteditable="true" data-ph="Что сделали и каких результатов достигли…"></div>
+      </section>
+    </div>
+
+    <!-- RIGHT: points row + chart underneath -->
+    <div class="col-right">
+      <div class="points-row">
+        <div class="point a" id="pointA"></div>
+        <div class="point b" id="pointB"></div>
+      </div>
+
+      <section class="col-chart">
+        <div class="chart" id="chart">
+          <div class="upload" id="uploadHint">
+            <button class="btn" id="uploadBtn" type="button">＋ Загрузить график</button>
+            <p>Скриншот динамики (PNG/JPG)</p>
+          </div>
+          <img id="chartImg" alt="">
+          <button class="replace edit" id="replaceBtn" type="button" style="display:none">Заменить график</button>
+          <div class="drag-hint edit" id="dragHint" style="display:none">Перетащите линии «Точка А» и «Точка Б»</div>
+        </div>
+        <input type="file" id="file" accept="image/*" hidden>
+      </section>
+    </div>
+
+  </div>
+</div>
+
+<!-- Random metrics generator modal -->
+<div class="modal-overlay" id="genModal" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <h2>😈 Генератор метрик</h2>
+      <button class="modal-close" id="genClose" type="button" aria-label="Закрыть">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="fld">
+        <span>Юр. лицо</span>
+        <div class="row">
+          <select class="ent-type" id="genType">
+            <option value="ИП">ИП</option>
+            <option value="ООО">ООО</option>
+          </select>
+          <input class="grow1" id="genName" type="text" placeholder="Наименование (напр. Пример П.П.)">
+        </div>
+      </label>
+      <label class="fld">
+        <span>Категория товара</span>
+        <input id="genCat" type="text" placeholder="напр. Разделитель для ящиков">
+      </label>
+      <div class="fld">
+        <span>Даты ведения</span>
+        <div class="row">
+          <div class="sub"><small>с</small><input id="genFrom" type="date"></div>
+          <div class="sub"><small>по</small><input id="genTo" type="date"></div>
+        </div>
+        <p class="hint">Месяц «с» → Точка А, месяц «по» → Точка Б</p>
+      </div>
+    </div>
+    <div class="modal-note">Проблемы, Достижения и график заполните вручную.</div>
+    <div class="modal-foot">
+      <button class="btn" id="genCancel" type="button">Отмена</button>
+      <button class="btn accent" id="genRun" type="button">😈 Сгенерировать</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const MONTHS=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль',
+                'Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const METRICS=[
+    {key:'per', ic:'👆', label:'Переходы', unit:'шт.'},
+    {key:'kor', ic:'🛒', label:'Корзины',  unit:'шт.'},
+    {key:'zak', ic:'📝', label:'Заказы',   unit:'шт.'},
+    {key:'prod',ic:'💰', label:'Продажи',  unit:'шт.'},
+    {key:'rev', ic:'💸', label:'Выручка',  unit:'₽'},
+  ];
+  const CONV=[
+    {key:'cr_cart', label:'CR в корзину',           calc:m=>pct(m.kor,m.per)},
+    {key:'cr_order',label:'CR корзины в заказ',      calc:m=>pct(m.zak,m.kor)},
+    {key:'cro',     label:'CRO (переход → заказ)',   calc:m=>pct(m.zak,m.per)},
+    {key:'buyout',  label:'Процент выкупа',          calc:m=>pct(m.prod,m.zak)},
+    {key:'crp',     label:'CRP (переход → продажа)', calc:m=>pct(m.prod,m.per)},
+  ];
+
+  const $=s=>document.querySelector(s);
+  const g=id=>document.getElementById(id);
+  const txt=el=>(el.textContent||'').replace(/ /g,' ').trim();
+  const setTxt=(el,v)=>{el.textContent=(v==null?'':v);};
+  const num=v=>{const n=parseFloat(String(v||'').replace(/[^\d.,-]/g,'').replace(',','.'));return isNaN(n)?0:n;};
+  const groupNum=s=>{const d=String(s||'').replace(/[^\d]/g,'');return d?d.replace(/\B(?=(\d{3})+(?!\d))/g,' '):'';};
+  function pct(a,b){a=num(a);b=num(b);return b>0?(a/b*100).toFixed(1)+'%':'';}
+  function fmtMonth(v){if(!v)return '';const [y,m]=v.split('-');return '('+MONTHS[+m-1]+' '+y+')';}
+
+  /* paste as plain text (keeps layout clean) */
+  function plainPaste(el){
+    el.addEventListener('paste',e=>{
+      e.preventDefault();
+      const t=(e.clipboardData||window.clipboardData).getData('text');
+      document.execCommand('insertText',false,t);
+    });
+  }
+
+  /* ---------- Build point cards ---------- */
+  function buildPoint(L,ru){
+    const wrap=g('point'+L), id=p=>p+'_'+L;
+    let html='<h3>Точка <span class="ttl-accent">'+ru+'</span> '+
+             '<input type="month" class="f edit" id="'+id('month')+'">'+
+             '<span class="month-label view" id="'+id('monthView')+'"></span></h3><div class="metrics">';
+    METRICS.forEach(m=>{
+      html+='<div class="metric"><span class="ic">'+m.ic+'</span><span class="lbl">'+m.label+':</span>'+
+            '<span class="ce num metric-in" id="'+id(m.key)+'" contenteditable="true" inputmode="numeric" data-ph="0"></span>'+
+            '<span class="unit">'+m.unit+'</span></div>';
+    });
+    html+='</div><div class="conv-title">📈 КОНВЕРСИИ:</div><div class="conv">';
+    CONV.forEach(c=>{
+      html+='<div class="conv-row"><span class="dot">•</span><span class="clbl">'+c.label+':</span>'+
+            '<span class="ce cval conv-in" id="'+id(c.key)+'" contenteditable="true" data-ph="—"></span></div>';
+    });
+    html+='</div>';
+    wrap.innerHTML=html;
+
+    METRICS.forEach(m=>{
+      const el=g(id(m.key));
+      plainPaste(el);
+      el.addEventListener('input',()=>recalc(L));
+      el.addEventListener('blur',()=>setTxt(el,groupNum(txt(el))));
+    });
+    CONV.forEach(c=>{
+      const el=g(id(c.key));
+      plainPaste(el);
+      el.addEventListener('input',()=>{el.dataset.manual='1';el.classList.add('manual');});
+    });
+    g(id('month')).addEventListener('input',e=>{g(id('monthView')).textContent=fmtMonth(e.target.value);});
+  }
+
+  function recalc(L){
+    const id=p=>p+'_'+L;
+    const m={per:num(txt(g(id('per')))),kor:num(txt(g(id('kor')))),zak:num(txt(g(id('zak')))),prod:num(txt(g(id('prod'))))};
+    CONV.forEach(c=>{const el=g(id(c.key));if(el.dataset.manual==='1')return;el.textContent=c.calc(m);});
+  }
+
+  buildPoint('A','А');
+  buildPoint('B','Б');
+
+  /* plain paste for left-column editables */
+  ['entName','category','problems','achievements'].forEach(id=>plainPaste(g(id)));
+
+  /* ---------- Entity type / dates ---------- */
+  const entType=g('entType'), entTypeView=g('entTypeView');
+  entType.addEventListener('change',()=>entTypeView.textContent=entType.value);
+  entTypeView.textContent=entType.value;
+
+  const d1=g('d1'), d2=g('d2'), datesView=g('datesView');
+  const fmtDate=v=>{if(!v)return '';const [y,m,d]=v.split('-');return d+'.'+m+'.'+y;};
+  function updateDates(){const a=fmtDate(d1.value),b=fmtDate(d2.value);datesView.textContent=(a||b)?(a+' — '+b):'';}
+  d1.addEventListener('input',updateDates);
+  d2.addEventListener('input',updateDates);
+
+  /* ---------- Chart upload + guides ---------- */
+  const chart=g('chart'), chartImg=g('chartImg'), fileInput=g('file');
+  const uploadHint=g('uploadHint'), replaceBtn=g('replaceBtn'), dragHint=g('dragHint');
+  g('uploadBtn').addEventListener('click',()=>fileInput.click());
+  replaceBtn.addEventListener('click',()=>fileInput.click());
+  const readImg=f=>{const r=new FileReader();r.onload=ev=>chartImg.src=ev.target.result;r.readAsDataURL(f);};
+  fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)readImg(f);});
+  chartImg.addEventListener('load',()=>{
+    if(!chartImg.src)return;
+    chartImg.style.display='block';
+    chart.classList.add('has-img');
+    uploadHint.style.display='none';
+    replaceBtn.style.display='';
+    dragHint.style.display='';
+    ensureGuides();
+  });
+  ['dragover','dragenter'].forEach(ev=>chart.addEventListener(ev,e=>e.preventDefault()));
+  chart.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))readImg(f);});
+
+  let guides=[];
+  function ensureGuides(){
+    if(guides.length)return;
+    guides=[makeGuide('Точка А',0.30,'a'),makeGuide('Точка Б',0.70,'b')];
+  }
+  function makeGuide(label,pct,cls){
+    const el=document.createElement('div');
+    el.className='guide '+cls; el.dataset.pct=pct;
+    el.innerHTML='<div class="guide-label">'+label+'</div><div class="guide-line"></div>';
+    chart.appendChild(el); positionGuide(el); enableDrag(el); return el;
+  }
+  const positionGuide=el=>el.style.left=(parseFloat(el.dataset.pct)*chart.clientWidth)+'px';
+  function enableDrag(el){
+    let dragging=false;
+    el.addEventListener('pointerdown',e=>{dragging=true;el.setPointerCapture(e.pointerId);e.preventDefault();});
+    el.addEventListener('pointermove',e=>{
+      if(!dragging)return;
+      const r=chart.getBoundingClientRect();
+      let x=Math.max(0,Math.min(e.clientX-r.left,r.width));
+      el.style.left=x+'px'; el.dataset.pct=x/r.width;
+    });
+    const stop=()=>dragging=false;
+    el.addEventListener('pointerup',stop); el.addEventListener('pointercancel',stop);
+  }
+  window.addEventListener('resize',()=>guides.forEach(positionGuide));
+
+  /* ---------- Export ---------- */
+  function fileName(){
+    const t=(entType.value+' '+(txt(g('entName'))||'case')).trim();
+    return ('Кейс_'+t).replace(/[^\wА-Яа-яЁё \-]/g,'').replace(/\s+/g,'_');
+  }
+  async function snapshot(){
+    document.body.classList.add('exporting');
+    await new Promise(r=>requestAnimationFrame(r));
+    let canvas;
+    try{
+      canvas=await html2canvas(g('sheet'),{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false});
+    }finally{ document.body.classList.remove('exporting'); }
+    return canvas;
+  }
+  g('pngBtn').addEventListener('click',async()=>{
+    const c=await snapshot();
+    const a=document.createElement('a');
+    a.download=fileName()+'.png'; a.href=c.toDataURL('image/png'); a.click();
+  });
+  g('pdfBtn').addEventListener('click',async()=>{
+    const c=await snapshot();
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:c.width>=c.height?'landscape':'portrait',unit:'px',format:[c.width,c.height]});
+    pdf.addImage(c.toDataURL('image/png'),'PNG',0,0,c.width,c.height);
+    pdf.save(fileName()+'.pdf');
+  });
+
+  /* ---------- Example / Clear ---------- */
+  const EXAMPLE={
+    entType:'ИП', entName:'Пример П.П.', category:'Разделитель для ящиков',
+    d1:'2024-11-01', d2:'2025-02-28',
+    problems:'1. Нет понимания как работать с рекламными кампаниями.\n2. SEO-переспам\n3. Плохая структура рекламных кампаний\n4. Схема работы фбо+фбс',
+    achievements:'Провели глубокую диагностику рекламных кампаний, выявили границу трафика для ниши.\n\nАвтоматизировали и систематизировали поставки на склады маркетплейса.\n\nПровели А/Б тесты гл. фото. Перепаковали визуал.\n\nОбновили SEO — убрали «переспам», сфокусировались на средне/высокочастотных ключах.',
+    A:{month:'2024-10', per:'904', kor:'262', zak:'69', prod:'58', rev:'11652'},
+    B:{month:'2025-01', per:'12978', kor:'3919', zak:'1004', prod:'863', rev:'175184'},
+  };
+  function fillPoint(L,d){
+    g('month_'+L).value=d.month;
+    g('monthView_'+L).textContent=fmtMonth(d.month);
+    ['per','kor','zak','prod','rev'].forEach(k=>setTxt(g(k+'_'+L),groupNum(d[k])));
+    CONV.forEach(c=>{const el=g(c.key+'_'+L);el.dataset.manual='';el.classList.remove('manual');});
+    recalc(L);
+  }
+  g('exampleBtn').addEventListener('click',()=>{
+    entType.value=EXAMPLE.entType; entTypeView.textContent=EXAMPLE.entType;
+    setTxt(g('entName'),EXAMPLE.entName); setTxt(g('category'),EXAMPLE.category);
+    d1.value=EXAMPLE.d1; d2.value=EXAMPLE.d2; updateDates();
+    setTxt(g('problems'),EXAMPLE.problems); setTxt(g('achievements'),EXAMPLE.achievements);
+    fillPoint('A',EXAMPLE.A); fillPoint('B',EXAMPLE.B);
+    const ex=window.EXAMPLE_CHART||'image/graph_temple.png';
+    if(chartImg.src!==ex) chartImg.src=ex;
+  });
+  g('clearBtn').addEventListener('click',()=>{
+    if(!confirm('Очистить все поля?'))return;
+    ['entName','category','problems','achievements'].forEach(id=>setTxt(g(id),''));
+    ['A','B'].forEach(L=>{
+      g('month_'+L).value=''; g('monthView_'+L).textContent='';
+      METRICS.forEach(m=>setTxt(g(m.key+'_'+L),''));
+      CONV.forEach(c=>{const el=g(c.key+'_'+L);el.textContent='';el.dataset.manual='';el.classList.remove('manual');});
+    });
+    d1.value=''; d2.value=''; datesView.textContent='';
+  });
+
+  /* ---------- Random metrics generator (modal) ---------- */
+  const modal=g('genModal');
+  const rnd=(a,b)=>Math.random()*(b-a)+a;
+  const ri=(a,b)=>Math.round(rnd(a,b));
+  function genMetrics(){
+    // Точка А — базовая воронка
+    const perA=ri(600,2500);
+    const korA=Math.max(1,Math.round(perA*rnd(0.22,0.33)));
+    const zakA=Math.max(1,Math.round(korA*rnd(0.20,0.30)));
+    const prodA=Math.max(1,Math.round(zakA*rnd(0.80,0.90)));
+    const priceA=ri(150,500);
+    const revA=prodA*priceA;
+    // Точка Б — всегда больше А
+    const factor=rnd(4,12);
+    const perB=Math.round(perA*factor);
+    const korB=Math.max(korA+1,Math.round(perB*Math.min(0.40,rnd(0.22,0.33)+0.02)));
+    const zakB=Math.max(zakA+1,Math.round(korB*Math.min(0.40,rnd(0.20,0.30)+0.01)));
+    const prodB=Math.max(prodA+1,Math.round(zakB*Math.min(0.95,rnd(0.80,0.90)+0.03)));
+    const priceB=priceA+ri(0,120);
+    const revB=Math.max(revA+1,prodB*priceB);
+    return {A:{per:perA,kor:korA,zak:zakA,prod:prodA,rev:revA},
+            B:{per:perB,kor:korB,zak:zakB,prod:prodB,rev:revB}};
+  }
+  function openModal(){
+    g('genType').value=entType.value;
+    g('genName').value=txt(g('entName'));
+    g('genCat').value=txt(g('category'));
+    g('genFrom').value=d1.value;
+    g('genTo').value=d2.value;
+    modal.hidden=false;
+  }
+  const closeModal=()=>modal.hidden=true;
+  g('genBtn').addEventListener('click',openModal);
+  g('genClose').addEventListener('click',closeModal);
+  g('genCancel').addEventListener('click',closeModal);
+  modal.addEventListener('click',e=>{if(e.target===modal)closeModal();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!modal.hidden)closeModal();});
+
+  g('genRun').addEventListener('click',()=>{
+    const type=g('genType').value, name=g('genName').value.trim(), cat=g('genCat').value.trim();
+    const from=g('genFrom').value, to=g('genTo').value;
+    // настройки -> в кейс
+    entType.value=type; entTypeView.textContent=type;
+    setTxt(g('entName'),name); setTxt(g('category'),cat);
+    d1.value=from; d2.value=to; updateDates();
+    // случайные метрики
+    const m=genMetrics();
+    const S=o=>({per:''+o.per,kor:''+o.kor,zak:''+o.zak,prod:''+o.prod,rev:''+o.rev});
+    fillPoint('A',Object.assign({month:from?from.slice(0,7):''},S(m.A)));
+    fillPoint('B',Object.assign({month:to?to.slice(0,7):''},S(m.B)));
+    closeModal();
+  });
+
+})();
+</script>
+</body>
+</html>
