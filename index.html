@@ -238,7 +238,7 @@
             <div class="drag-hint edit" id="dragHint" style="display:none">Перетащите линии «Точка А» и «Точка Б»</div>
           </div>
           <div class="chart-modes edit">
-            <button class="mode-btn" id="modeGen" type="button" title="Показать сгенерированный график">
+            <button class="mode-btn" id="modeGen" type="button" title="Показать или перегенерировать график">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M13 3.5C13.5 9.2 16.8 12.5 22.5 13C16.8 13.5 13.5 16.8 13 22.5C12.5 16.8 9.2 13.5 3.5 13C9.2 12.5 12.5 9.2 13 3.5Z"/>
                 <path d="M5.5 2.5C5.7 4.6 6.4 5.3 8.5 5.5C6.4 5.7 5.7 6.4 5.5 8.5C5.3 6.4 4.6 5.7 2.5 5.5C4.6 5.3 5.3 4.6 5.5 2.5Z"/>
@@ -447,7 +447,7 @@
   ['dragover','dragenter'].forEach(ev=>chart.addEventListener(ev,e=>e.preventDefault()));
   chart.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))readImg(f);});
 
-  g('modeGen').addEventListener('click',()=>setMode('gen'));
+  g('modeGen').addEventListener('click',()=>regenerateGenChart());
   g('modePhoto').addEventListener('click',()=>setMode('photo'));
 
   let guides=[];
@@ -503,7 +503,7 @@
     const smooth=(amp,passes)=>{ let a=Array.from({length:n},()=>rnd(-1,1));
       for(let p=0;p<passes;p++) a=a.map((_,i)=>(a[Math.max(0,i-1)]+a[i]+a[Math.min(n-1,i+1)])/3);
       const mx=Math.max(...a.map(Math.abs))||1; return a.map(v=>v/mx*amp); };
-    const oN=smooth(0.12,2), sN=smooth(0.06,2);
+    const oN=smooth(0.12,2);
     for(let i=0;i<n;i++){
       let o;
       if(i<=aIdx)       o=lerp(oA*0.3,oA,ease(i/aIdx));                          // разгон до А
@@ -514,13 +514,28 @@
       orders[i]=Math.max(0,Math.round(o));
     }
     orders[aIdx]=oA; orders[bIdx]=oB;                                            // ровно метрики в точках
-    // остаток под оборачиваемость: держат запас ≈ продаж за последние cover дней (неделя + ~3 дня плеча)
-    const cover=Math.round(rnd(10,14));
+    // ponytail: 1 поставка ближе к концу — обычный кейс; 2–3 только для длинной динамики
+    const supplyCount=Math.random()<0.7?1:Math.random()<0.92?2:3;
+    const supplyFractions=supplyCount===1?[rnd(.72,.88)]:supplyCount===2?[rnd(.42,.56),rnd(.76,.90)]:[rnd(.28,.40),rnd(.55,.68),rnd(.80,.92)];
+    const span=Math.max(1,bIdx-aIdx), restockDays=[];
+    supplyFractions.forEach(f=>{
+      const day=Math.min(n-2,Math.max(aIdx+1,Math.round(aIdx+span*f)));
+      if(!restockDays.includes(day)) restockDays.push(day);
+    });
+    const arrivals=Array(n).fill(0), safety=Math.round(orders.reduce((sum,value)=>sum+value,0)/n*ri(7,12));
+    let nextSupply=0, inv=orders.slice(0,restockDays[0]).reduce((sum,value)=>sum+value,0)+safety;
     for(let i=0;i<n;i++){
-      let s=0; for(let j=Math.max(0,i-cover+1);j<=i;j++) s+=orders[j];           // продано за последние cover дней
-      stock[i]=Math.max(orders[i], Math.round(s*(1+sN[i])));
+      if(i===restockDays[nextSupply]){
+        const until=restockDays[nextSupply+1]||n;
+        const target=orders.slice(i,until).reduce((sum,value)=>sum+value,0)+safety;
+        arrivals[i]=Math.max(1,Math.round(target-inv));
+        inv+=arrivals[i];
+        nextSupply++;
+      }
+      stock[i]=inv;                                                              // остаток на начало дня, включая приехавшую поставку
+      inv-=orders[i];
     }
-    return {dates,orders,stock,n,aIdx,bIdx};
+    return {dates,orders,stock,n,aIdx,bIdx,arrivals};
   }
   const fmtDay=d=>String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');
   function drawGenChart(){
@@ -535,7 +550,7 @@
         {label:'Заказы',data:orders,yAxisID:'yO',borderColor:'#e23b54',backgroundColor:'rgba(226,86,107,0.15)',
          fill:true,tension:.35,borderWidth:2.4,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#e23b54',pointHoverBorderColor:'#fff'},
         {label:'Остатки',data:stock,yAxisID:'yS',borderColor:'#3d8fd6',backgroundColor:'rgba(90,169,230,0.16)',
-         fill:true,tension:.35,borderWidth:2.4,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#3d8fd6',pointHoverBorderColor:'#fff'},
+         fill:true,cubicInterpolationMode:'monotone',borderWidth:2.4,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#3d8fd6',pointHoverBorderColor:'#fff'},
       ]},
       options:{
         responsive:true,maintainAspectRatio:false,
@@ -567,6 +582,22 @@
       const px=xs.getPixelForValue(+el.dataset.idx);
       if(isFinite(px)){ el.dataset.pct=px/cw; positionGuide(el); }
     });
+  }
+
+  function regenerateGenChart(){
+    const zakA=num(txt(g('zak_A'))), zakB=num(txt(g('zak_B')));
+    if(!zakA||!zakB) return setMode('gen');
+    genSeries=buildSeries(zakA,zakB,d1.value,d2.value);
+    console.assert(genSeries.orders[genSeries.aIdx]===zakA && genSeries.orders[genSeries.bIdx]===zakB &&
+      genSeries.arrivals.filter(Boolean).length<=3,'Заказы в А/Б должны совпадать с карточками, поставок — не больше трёх');
+    setMode('gen');
+    drawGenChart();
+    if(guides.length){
+      guides[0].dataset.idx=genSeries.aIdx; guides[0].dataset.manual='';
+      guides[1].dataset.idx=genSeries.bIdx; guides[1].dataset.manual='';
+      syncGuidesToData();
+      requestAnimationFrame(syncGuidesToData);
+    }
   }
 
   /* ---------- Масштаб листа под экран (transform, чтобы не ломать график) ---------- */
@@ -708,15 +739,7 @@
     fillPoint('A',Object.assign({month:from?from.slice(0,7):''},S(m.A)));
     fillPoint('B',Object.assign({month:to?to.slice(0,7):''},S(m.B)));
     // график по дням: Заказы (красная) + Остатки (синяя)
-    genSeries=buildSeries(m.A.zak,m.B.zak,from,to);
-    setMode('gen');     // показываем контейнер, затем строим график (чтобы Chart.js взял размеры)
-    drawGenChart();
-    if(guides.length){
-      guides[0].dataset.idx=genSeries.aIdx; guides[0].dataset.manual='';
-      guides[1].dataset.idx=genSeries.bIdx; guides[1].dataset.manual='';
-      syncGuidesToData();
-      requestAnimationFrame(syncGuidesToData);
-    }
+    regenerateGenChart();
     closeModal();
   });
 
