@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="image/graph_temple.b64.js"></script>
 <style>
   :root{
@@ -49,12 +50,12 @@
   .btn.accent:hover{opacity:.9}
 
   /* ---------- Stage / Sheet ---------- */
-  .stage{padding:16px;overflow-x:auto}
+  .stage{padding:16px;overflow:auto;display:flex;justify-content:center}
+  .sheet-holder{flex:0 0 auto;overflow:hidden;border-radius:16px;box-shadow:0 12px 40px rgba(20,20,30,.10)}
   .sheet{
-    width:var(--sheet-w);margin:0 auto;background:#fff;border-radius:16px;
-    box-shadow:0 12px 40px rgba(20,20,30,.10);padding:40px 44px;
+    width:var(--sheet-w);background:#fff;border-radius:16px;padding:40px 44px;
     display:flex;align-items:flex-start;gap:30px;
-    zoom:var(--scale);
+    transform:scale(var(--scale));transform-origin:top left;
   }
   .col-right{flex:2 1 0;min-width:0;display:flex;flex-direction:column;gap:26px}
   .points-row{display:flex;gap:30px;align-items:flex-start}
@@ -111,7 +112,7 @@
     background:var(--soft);overflow:hidden;display:flex;align-items:center;justify-content:center;}
   .chart.has-content{border-style:solid;border-color:var(--line);background:#fff}
   .chart:not(.has-content) .guide{display:none}
-  #genCanvas{width:100%;height:auto}
+  .gen-wrap{position:relative;width:100%;aspect-ratio:16/6}
   .chart-modes{display:flex;flex-direction:column;gap:8px;flex:0 0 auto}
   .mode-btn{width:42px;height:42px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;
     font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--ink)}
@@ -136,7 +137,7 @@
   .mp-row .mp-view{font-weight:700;color:var(--accent)}
 
   /* ---------- Export mode ---------- */
-  .exporting .sheet{zoom:1}
+  .exporting .sheet{transform:none}
   .exporting .f,.exporting .ce{border-color:transparent !important;background:transparent !important}
   .exporting .ce:empty:before{content:'' !important}
   .exporting .view{display:inline}
@@ -180,6 +181,7 @@
 </div>
 
 <div class="stage">
+  <div class="sheet-holder" id="sheetHolder">
   <div class="sheet" id="sheet">
 
     <!-- LEFT -->
@@ -223,7 +225,7 @@
       <section class="col-chart">
         <div class="chart-wrap">
           <div class="chart" id="chart">
-            <canvas id="genCanvas" width="1200" height="456" style="display:none"></canvas>
+            <div class="gen-wrap" id="genWrap" style="display:none"><canvas id="genCanvas"></canvas></div>
             <div class="upload" id="uploadHint">
               <button class="btn" id="uploadBtn" type="button">＋ Загрузить график</button>
               <p>Скриншот динамики (PNG/JPG)</p>
@@ -271,6 +273,7 @@
     </div>
 
   </div>
+  </div>
 </div>
 
 <!-- Random metrics generator modal -->
@@ -304,7 +307,7 @@
         <p class="hint">Месяц «с» → Точка А, месяц «по» → Точка Б</p>
       </div>
     </div>
-    <div class="modal-note">Проблемы, Достижения и график заполните вручную.</div>
+    <div class="modal-note">Проблемы и Достижения заполните вручную.</div>
     <div class="modal-foot">
       <button class="btn" id="genCancel" type="button">Отмена</button>
       <button class="btn accent" id="genRun" type="button">😈 Сгенерировать</button>
@@ -408,11 +411,13 @@
   d2.addEventListener('input',updateDates);
 
   /* ---------- Chart upload + guides ---------- */
-  const chart=g('chart'), chartImg=g('chartImg'), fileInput=g('file'), genCanvas=g('genCanvas');
+  const chart=g('chart'), chartImg=g('chartImg'), fileInput=g('file');
+  const genWrap=g('genWrap'), genCanvas=g('genCanvas');
   const uploadHint=g('uploadHint'), genHint=g('genHint'), replaceBtn=g('replaceBtn'), dragHint=g('dragHint');
 
   let chartMode='photo';   // 'photo' | 'gen'
   let genSeries=null;      // сгенерированные данные графика
+  let chartObj=null;       // экземпляр Chart.js
   const hasImg=()=>!!chartImg.getAttribute('src');
 
   function setMode(mode){
@@ -420,7 +425,8 @@
     const showGen = mode==='gen'   && !!genSeries;
     const showImg = mode==='photo' && hasImg();
     const content = showGen || showImg;
-    genCanvas.style.display  = showGen?'block':'none';
+    genWrap.style.display    = showGen?'block':'none';
+    if(showGen && chartObj) chartObj.resize();
     chartImg.style.display   = showImg?'block':'none';
     uploadHint.style.display = (mode==='photo' && !showImg)?'':'none';
     genHint.style.display    = (mode==='gen'   && !showGen)?'':'none';
@@ -430,6 +436,7 @@
     if(content) ensureGuides();
     g('modeGen').classList.toggle('active', mode==='gen');
     g('modePhoto').classList.toggle('active', mode==='photo');
+    if(showGen) requestAnimationFrame(syncGuidesToData);
   }
 
   g('uploadBtn').addEventListener('click',()=>fileInput.click());
@@ -459,6 +466,7 @@
     el.addEventListener('pointerdown',e=>{
       e.preventDefault();
       const move=ev=>{
+        el.dataset.manual='1';
         const r=chart.getBoundingClientRect();
         const pct=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width));
         el.style.left=(pct*100)+'%'; el.dataset.pct=pct;
@@ -471,7 +479,7 @@
       document.addEventListener('pointerup',up);
     });
   }
-  window.addEventListener('resize',()=>guides.forEach(positionGuide));
+  window.addEventListener('resize',()=>{ guides.forEach(positionGuide); requestAnimationFrame(syncGuidesToData); });
 
   /* ---------- Generated chart (Заказы / Остатки) ---------- */
   const lerp=(a,b,t)=>a+(b-a)*t;
@@ -484,58 +492,93 @@
     s=new Date(+s-15*DAY); e=new Date(+e+15*DAY);          // 15 дней до и после периода ведения
     const dates=[]; for(let d=new Date(s); d<=e; d=new Date(+d+DAY)) dates.push(new Date(d));
     const n=dates.length;
-    const oA=Math.max(1,Math.round(zakA/30)), oB=Math.max(oA+1,Math.round(zakB/30)); // заказы/день А и Б
-    const sStart=Math.round(oB*rnd(9,14)), sEnd=Math.max(1,Math.round(oB*rnd(1.2,2.5)));
-    const orders=[], stock=[];
+    const aIdx=15, bIdx=n-16;                             // даты «с» и «по» (точки А и Б)
+    const oA=Math.max(1,Math.round(zakA)), oB=Math.max(oA+1,Math.round(zakB)); // заказы в день в точках А и Б
+    const tailGrows=Math.random()<0.5;                   // 50/50: после Б тренд растёт или проседает
+
+    // максимум 2 просадки между А и Б, всё остальное — гладко
+    const dips=[]; for(let k=Math.round(rnd(0,2)); k>0; k--) dips.push(Math.round(rnd(aIdx+4,bIdx-4)));
+    const orders=new Array(n), stock=new Array(n);
+    // сглаженный случайный шум: хаотично, но без копий
+    const smooth=(amp,passes)=>{ let a=Array.from({length:n},()=>rnd(-1,1));
+      for(let p=0;p<passes;p++) a=a.map((_,i)=>(a[Math.max(0,i-1)]+a[i]+a[Math.min(n-1,i+1)])/3);
+      const mx=Math.max(...a.map(Math.abs))||1; return a.map(v=>v/mx*amp); };
+    const oN=smooth(0.12,2), sN=smooth(0.06,2);
     for(let i=0;i<n;i++){
-      const t=n>1?i/(n-1):0;
-      let o=lerp(oA*0.5,oB,ease(t))*(1+rnd(-0.22,0.22));   // рост заказов от А к Б + шум
-      if(Math.random()<0.12) o*=rnd(1.4,2.1);              // редкие всплески
-      o=Math.max(0,Math.round(o)); orders.push(o);
-      let st=lerp(sStart,sEnd,ease(t)) - (o-oA)*rnd(0.4,0.9); // остатки убывают, обратны заказам
-      st*=(1+rnd(-0.07,0.07));
-      stock.push(Math.max(0,Math.round(st)));
+      let o;
+      if(i<=aIdx)       o=lerp(oA*0.3,oA,ease(i/aIdx));                          // разгон до А
+      else if(i<=bIdx)  o=lerp(oA,oB,ease((i-aIdx)/(bIdx-aIdx)));                // рост А → Б
+      else { const tt=(i-bIdx)/((n-1-bIdx)||1); o=tailGrows?lerp(oB,oB*1.12,tt):lerp(oB,oB*rnd(0.2,0.4),ease(tt)); }
+      o*=1+oN[i];                                                                // хаотичный гладкий шум
+      for(const dp of dips){ const d=Math.abs(i-dp); if(d<=2) o*=lerp(0.5,1,d/3); } // плавная просадка ~3 дня
+      orders[i]=Math.max(0,Math.round(o));
     }
-    return {dates,orders,stock,n,aIdx:15,bIdx:n-16};
+    orders[aIdx]=oA; orders[bIdx]=oB;                                            // ровно метрики в точках
+    // остаток под оборачиваемость: держат запас ≈ продаж за последние cover дней (неделя + ~3 дня плеча)
+    const cover=Math.round(rnd(10,14));
+    for(let i=0;i<n;i++){
+      let s=0; for(let j=Math.max(0,i-cover+1);j<=i;j++) s+=orders[j];           // продано за последние cover дней
+      stock[i]=Math.max(orders[i], Math.round(s*(1+sN[i])));
+    }
+    return {dates,orders,stock,n,aIdx,bIdx};
   }
+  const fmtDay=d=>String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');
   function drawGenChart(){
-    if(!genSeries) return;
-    const ctx=genCanvas.getContext('2d');
-    const W=genCanvas.width, H=genCanvas.height;
-    ctx.clearRect(0,0,W,H);
-    const {dates,orders,stock,n}=genSeries;
-    const m={l:20,r:20,t:48,b:40}, pw=W-m.l-m.r, ph=H-m.t-m.b;
-    const oMax=Math.max(1,...orders)*1.18, sMax=Math.max(1,...stock)*1.12;
-    const X=i=>m.l+(n>1?i/(n-1):0)*pw;
-    const YO=v=>m.t+ph-(v/oMax)*ph, YS=v=>m.t+ph-(v/sMax)*ph;
-    // сетка
-    ctx.strokeStyle='#eef0f3'; ctx.lineWidth=1;
-    for(let k=0;k<=4;k++){const y=m.t+ph*k/4; ctx.beginPath(); ctx.moveTo(m.l,y); ctx.lineTo(m.l+pw,y); ctx.stroke();}
-    const series=(vals,Y,line,fill)=>{
-      ctx.beginPath(); ctx.moveTo(X(0),Y(vals[0]));
-      for(let i=1;i<n;i++) ctx.lineTo(X(i),Y(vals[i]));
-      ctx.lineTo(X(n-1),m.t+ph); ctx.lineTo(X(0),m.t+ph); ctx.closePath();
-      ctx.fillStyle=fill; ctx.fill();
-      ctx.beginPath(); ctx.moveTo(X(0),Y(vals[0]));
-      for(let i=1;i<n;i++) ctx.lineTo(X(i),Y(vals[i]));
-      ctx.strokeStyle=line; ctx.lineWidth=2.4; ctx.lineJoin='round'; ctx.stroke();
-    };
-    series(stock,YS,'#3d8fd6','rgba(90,169,230,0.18)');    // остатки — синяя
-    series(orders,YO,'#e23b54','rgba(226,86,107,0.16)');   // заказы — красная
-    // подписи дат
-    ctx.fillStyle='#9aa0aa'; ctx.font='11px Montserrat, sans-serif'; ctx.textAlign='center';
-    const step=Math.max(1,Math.round(n/12));
-    for(let i=0;i<n;i+=step){
-      const d=dates[i], lbl=String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');
-      ctx.fillText(lbl,X(i),H-m.b+18);
-    }
-    // легенда
-    ctx.textAlign='left'; ctx.font='600 12px Montserrat, sans-serif';
-    ctx.fillStyle='#e23b54'; ctx.beginPath(); ctx.arc(m.l+5,20,5,0,7); ctx.fill();
-    ctx.fillStyle='#3a3f47'; ctx.fillText('Заказы',m.l+16,24);
-    ctx.fillStyle='#3d8fd6'; ctx.beginPath(); ctx.arc(m.l+95,20,5,0,7); ctx.fill();
-    ctx.fillStyle='#3a3f47'; ctx.fillText('Остатки',m.l+106,24);
+    if(!genSeries||!window.Chart) return;
+    const {dates,orders,stock}=genSeries;
+    const labels=dates.map(fmtDay);
+    if(chartObj){ chartObj.destroy(); chartObj=null; }
+    const mont={family:'Montserrat, sans-serif'};
+    chartObj=new Chart(genCanvas.getContext('2d'),{
+      type:'line',
+      data:{labels,datasets:[
+        {label:'Заказы',data:orders,yAxisID:'yO',borderColor:'#e23b54',backgroundColor:'rgba(226,86,107,0.15)',
+         fill:true,tension:.35,borderWidth:2.4,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#e23b54',pointHoverBorderColor:'#fff'},
+        {label:'Остатки',data:stock,yAxisID:'yS',borderColor:'#3d8fd6',backgroundColor:'rgba(90,169,230,0.16)',
+         fill:true,tension:.35,borderWidth:2.4,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#3d8fd6',pointHoverBorderColor:'#fff'},
+      ]},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        animation:false,
+        plugins:{
+          legend:{position:'top',align:'start',labels:{usePointStyle:true,boxWidth:8,font:{...mont,weight:'600',size:12},color:'#3a3f47'}},
+          tooltip:{usePointStyle:true,padding:10,backgroundColor:'rgba(20,20,30,.9)',
+            titleFont:{...mont,weight:'600'},bodyFont:mont,
+            callbacks:{label:c=>'  '+c.dataset.label+': '+Math.round(c.parsed.y).toLocaleString('ru-RU')+' шт.'}},
+        },
+        scales:{
+          x:{grid:{display:false},ticks:{maxTicksLimit:12,maxRotation:0,autoSkip:true,font:{...mont,size:11},color:'#9aa0aa'}},
+          yO:{position:'right',beginAtZero:true,grid:{display:false},ticks:{font:{...mont,size:11},color:'#e23b54'},
+              title:{display:true,text:'Заказы',color:'#e23b54',font:{...mont,size:11,weight:'600'}}},
+          yS:{position:'left',beginAtZero:true,grid:{color:'#eef0f3'},ticks:{font:{...mont,size:11},color:'#3d8fd6'},
+              title:{display:true,text:'Остатки',color:'#3d8fd6',font:{...mont,size:11,weight:'600'}}},
+        }
+      }
+    });
   }
+  // совместить линии «Точка А/Б» с реальными датами на графике (с учётом полей осей)
+  function syncGuidesToData(){
+    if(chartMode!=='gen'||!chartObj||!chartObj.scales||!chartObj.scales.x) return;
+    const xs=chartObj.scales.x, cw=chart.clientWidth;
+    if(!cw) return;
+    guides.forEach(el=>{
+      if(el.dataset.idx==null||el.dataset.idx===''||el.dataset.manual==='1') return;
+      const px=xs.getPixelForValue(+el.dataset.idx);
+      if(isFinite(px)){ el.dataset.pct=px/cw; positionGuide(el); }
+    });
+  }
+
+  /* ---------- Масштаб листа под экран (transform, чтобы не ломать график) ---------- */
+  const sheetEl=g('sheet'), holderEl=g('sheetHolder');
+  function fitScale(){
+    const sc=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--scale'))||0.8;
+    holderEl.style.width=Math.round(sheetEl.offsetWidth*sc)+'px';
+    holderEl.style.height=Math.round(sheetEl.offsetHeight*sc)+'px';
+  }
+  if('ResizeObserver' in window) new ResizeObserver(fitScale).observe(sheetEl);
+  window.addEventListener('load',fitScale);
+  fitScale();
 
   /* ---------- Marketplace select ---------- */
   const mp=g('mp'), mpCustom=g('mpCustom'), mpView=g('mpView');
@@ -666,12 +709,13 @@
     fillPoint('B',Object.assign({month:to?to.slice(0,7):''},S(m.B)));
     // график по дням: Заказы (красная) + Остатки (синяя)
     genSeries=buildSeries(m.A.zak,m.B.zak,from,to);
+    setMode('gen');     // показываем контейнер, затем строим график (чтобы Chart.js взял размеры)
     drawGenChart();
-    setMode('gen');
     if(guides.length){
-      guides[0].dataset.pct=genSeries.aIdx/(genSeries.n-1);
-      guides[1].dataset.pct=genSeries.bIdx/(genSeries.n-1);
-      guides.forEach(positionGuide);
+      guides[0].dataset.idx=genSeries.aIdx; guides[0].dataset.manual='';
+      guides[1].dataset.idx=genSeries.bIdx; guides[1].dataset.manual='';
+      syncGuidesToData();
+      requestAnimationFrame(syncGuidesToData);
     }
     closeModal();
   });
