@@ -120,6 +120,11 @@
   .guide .guide-line{position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:#111}
   .guide .guide-label{position:absolute;top:8px;left:50%;transform:translateX(-50%);
     background:#111;color:#fff;font-size:12px;font-weight:600;padding:2px 9px;border-radius:5px;white-space:nowrap}
+  .mp-row{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:600}
+  .mp-row .mp-label{font-weight:700}
+  .mp-row select.f{font-weight:600}
+  .mp-row input.f{font-size:14px}
+  .mp-row .mp-view{font-weight:700;color:var(--accent)}
 
   /* ---------- Export mode ---------- */
   .exporting .sheet{zoom:1}
@@ -218,6 +223,19 @@
         </div>
         <input type="file" id="file" accept="image/*" hidden>
       </section>
+
+      <div class="mp-row">
+        <span class="mp-label">Маркетплейс:</span>
+        <select class="f edit" id="mp">
+          <option value="Ozon">Ozon</option>
+          <option value="Wildberries">Wildberries</option>
+          <option value="Я.Маркет">Я.Маркет</option>
+          <option value="Мегамаркет">Мегамаркет</option>
+          <option value="__custom__">Свое…</option>
+        </select>
+        <input class="f edit" id="mpCustom" type="text" placeholder="Вписать маркетплейс" style="display:none">
+        <span class="view mp-view" id="mpView"></span>
+      </div>
     </div>
 
   </div>
@@ -389,18 +407,33 @@
   }
   const positionGuide=el=>el.style.left=(parseFloat(el.dataset.pct)*chart.clientWidth)+'px';
   function enableDrag(el){
-    let dragging=false;
-    el.addEventListener('pointerdown',e=>{dragging=true;el.setPointerCapture(e.pointerId);e.preventDefault();});
-    el.addEventListener('pointermove',e=>{
-      if(!dragging)return;
-      const r=chart.getBoundingClientRect();
-      let x=Math.max(0,Math.min(e.clientX-r.left,r.width));
-      el.style.left=x+'px'; el.dataset.pct=x/r.width;
+    el.addEventListener('pointerdown',e=>{
+      e.preventDefault();
+      const move=ev=>{
+        const r=chart.getBoundingClientRect();
+        const x=Math.max(0,Math.min(ev.clientX-r.left,r.width));
+        el.style.left=x+'px'; el.dataset.pct=x/r.width;
+      };
+      const up=()=>{
+        document.removeEventListener('pointermove',move);
+        document.removeEventListener('pointerup',up);
+      };
+      document.addEventListener('pointermove',move);
+      document.addEventListener('pointerup',up);
     });
-    const stop=()=>dragging=false;
-    el.addEventListener('pointerup',stop); el.addEventListener('pointercancel',stop);
   }
   window.addEventListener('resize',()=>guides.forEach(positionGuide));
+
+  /* ---------- Marketplace select ---------- */
+  const mp=g('mp'), mpCustom=g('mpCustom'), mpView=g('mpView');
+  function updateMp(){
+    const custom=mp.value==='__custom__';
+    mpCustom.style.display=custom?'':'none';
+    mpView.textContent=custom?mpCustom.value.trim():mp.value;
+  }
+  mp.addEventListener('change',updateMp);
+  mpCustom.addEventListener('input',updateMp);
+  updateMp();
 
   /* ---------- Export ---------- */
   function fileName(){
@@ -451,6 +484,7 @@
     d1.value=EXAMPLE.d1; d2.value=EXAMPLE.d2; updateDates();
     setTxt(g('problems'),EXAMPLE.problems); setTxt(g('achievements'),EXAMPLE.achievements);
     fillPoint('A',EXAMPLE.A); fillPoint('B',EXAMPLE.B);
+    mp.value='Wildberries'; updateMp();
     const ex=window.EXAMPLE_CHART||'image/graph_temple.png';
     if(chartImg.src!==ex) chartImg.src=ex;
   });
@@ -463,6 +497,7 @@
       CONV.forEach(c=>{const el=g(c.key+'_'+L);el.textContent='';el.dataset.manual='';el.classList.remove('manual');});
     });
     d1.value=''; d2.value=''; datesView.textContent='';
+    mp.value='Ozon'; mpCustom.value=''; updateMp();
   });
 
   /* ---------- Random metrics generator (modal) ---------- */
